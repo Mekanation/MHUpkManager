@@ -37,6 +37,11 @@ internal sealed class UiEditorPanel : UserControl
     private string _textureReplacementDisabledReason = string.Empty;
     private bool _swfWorkspaceEnabled = true;
     private string _swfWorkspaceDisabledReason = string.Empty;
+    private readonly TextBox _swfOrGfxPathTextBox;
+    private readonly TextBox _binaryFilePathTextBox;
+    private readonly Button _chooseSwfOrGfxButton;
+    private readonly Button _chooseBinaryFileButton;
+    private readonly Button _wrapSwfFileButton;
 
     public UiEditorPanel()
     {
@@ -84,6 +89,18 @@ internal sealed class UiEditorPanel : UserControl
 
         _exportSwfEmbeddedButton = WorkspaceUiStyle.CreateActionButton("Export Embedded SWF/GFX");
         _exportSwfEmbeddedButton.Click += (_, _) => ExportSwfEmbeddedRequested?.Invoke(this, EventArgs.Empty);
+
+        _swfOrGfxPathTextBox = CreateReadOnlyField();
+        _binaryFilePathTextBox = CreateReadOnlyField();
+
+        _chooseSwfOrGfxButton = WorkspaceUiStyle.CreateActionButton("Choose SWF / GFX File...");
+        _chooseSwfOrGfxButton.Click += (_, _) => ChooseSwfOrGfxRequested?.Invoke(this, EventArgs.Empty);
+
+        _chooseBinaryFileButton = WorkspaceUiStyle.CreateActionButton("Choose Binary File...");
+        _chooseBinaryFileButton.Click += (_, _) => ChooseBinaryFileRequested?.Invoke(this, EventArgs.Empty);
+
+        _wrapSwfFileButton = WorkspaceUiStyle.CreateActionButton("Wrap SWF / GFX File");
+        _wrapSwfFileButton.Click += (_, _) => WrapSwfFileRequested?.Invoke(this, EventArgs.Empty);
 
         _chooseSwfImportButton = WorkspaceUiStyle.CreateActionButton("Choose SWF/GFX/Raw Import");
         _chooseSwfImportButton.Click += (_, _) => ChooseSwfImportRequested?.Invoke(this, EventArgs.Empty);
@@ -199,6 +216,15 @@ internal sealed class UiEditorPanel : UserControl
         AddRow(leftLayout, _previewSwfButton);
         AddRow(leftLayout, _exportSwfRawButton);
         AddRow(leftLayout, _exportSwfEmbeddedButton);
+        AddRow(leftLayout, WorkspaceUiStyle.CreateWorkflowSectionHeader(6, "Region Extraction"));
+        AddRow(leftLayout, CreateLabel("SWF / GFX File:"));
+        AddRow(leftLayout, _swfOrGfxPathTextBox);
+        AddRow(leftLayout, _chooseSwfOrGfxButton);
+        AddRow(leftLayout, CreateLabel("Binary File:"));
+        AddRow(leftLayout, _binaryFilePathTextBox);
+        AddRow(leftLayout, _chooseBinaryFileButton);
+        AddRow(leftLayout, CreateLabel("Wrap File"));
+        AddRow(leftLayout, _wrapSwfFileButton);
         AddRow(leftLayout, CreateLabel("Import File:"));
         AddRow(leftLayout, _swfImportPathTextBox);
         AddRow(leftLayout, _chooseSwfImportButton);
@@ -254,6 +280,9 @@ internal sealed class UiEditorPanel : UserControl
     public event EventHandler ExportSwfEmbeddedRequested;
     public event EventHandler ChooseSwfImportRequested;
     public event EventHandler ImportSwfRequested;
+    public event EventHandler ChooseSwfOrGfxRequested;
+    public event EventHandler ChooseBinaryFileRequested;
+    public event EventHandler WrapSwfFileRequested;
 
     public string PackagePath => _packagePathTextBox.Text.Trim();
     public string SubjectName => _subjectTextBox.Text.Trim();
@@ -262,6 +291,8 @@ internal sealed class UiEditorPanel : UserControl
     public string TextureReplacementDisabledReason => _textureReplacementDisabledReason;
     public bool SwfWorkspaceEnabled => _swfWorkspaceEnabled;
     public string SwfWorkspaceDisabledReason => _swfWorkspaceDisabledReason;
+    public string SwfOrGfxFilePath => _swfOrGfxPathTextBox.Text.Trim();
+    public string BinaryFilePath => _binaryFilePathTextBox.Text.Trim();
 
     public EnemyClientUiTarget SelectedTarget => _targetsGrid.SelectedRows.Count == 0
         ? null
@@ -295,6 +326,10 @@ internal sealed class UiEditorPanel : UserControl
         _subjectTextBox.Enabled = !busy;
         _targetsGrid.Enabled = !busy;
         _textureAssetsGrid.Enabled = !busy;
+        _chooseSwfOrGfxButton.Enabled = !busy;
+        _chooseBinaryFileButton.Enabled = !busy;
+        _wrapSwfFileButton.Enabled = !busy;
+
         RefreshSwfSelectionState();
     }
 
@@ -406,6 +441,9 @@ internal sealed class UiEditorPanel : UserControl
             ? "Select a swfmovie target, then preview it here to inspect the export size, embedded payload, and string hints."
             : previewText;
     }
+
+    public void SetSwfOrGfxFile(string path) => _swfOrGfxPathTextBox.Text = path ?? string.Empty;
+    public void SetBinaryFile(string path) => _binaryFilePathTextBox.Text = path ?? string.Empty;
 
     public void SetLog(IEnumerable<string> lines)
     {

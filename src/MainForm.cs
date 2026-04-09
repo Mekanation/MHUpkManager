@@ -156,10 +156,10 @@ namespace MHUpkManager
             InitializeSkeletalMeshRetargeterUi();
             InitializeUiEditorUi();
             uiEditorPanel.SetTextureReplacementEnabled(
-                false,
+                true,
                 "UI image replacement is temporarily disabled in the shared build while direct UPK icon replacement is being validated.");
             uiEditorPanel.SetSwfWorkspaceEnabled(
-                false,
+                true,
                 "SWF export and re-import are temporarily disabled in the shared build while the UI editing workflow is being validated.");
             ConfigureLocalOnlyUiEditor();
             InitializeLocalOnlyFeatures();
@@ -732,6 +732,9 @@ namespace MHUpkManager
             uiEditorPanel.PreviewSwfRequested += async (_, _) => await PreviewUiEditorSwfAsync().ConfigureAwait(true);
             uiEditorPanel.ExportSwfRawRequested += async (_, _) => await ExportUiEditorSwfAsync(UiEditorSwfTransferMode.RawExport).ConfigureAwait(true);
             uiEditorPanel.ExportSwfEmbeddedRequested += async (_, _) => await ExportUiEditorSwfAsync(UiEditorSwfTransferMode.EmbeddedPayload).ConfigureAwait(true);
+            uiEditorPanel.ChooseSwfOrGfxRequested += (_, _) => ChooseUiEditorSwfOrGfxFile();
+            uiEditorPanel.ChooseBinaryFileRequested += (_, _) => ChooseUiEditorBinaryFile();
+            uiEditorPanel.WrapSwfFileRequested += async (_, _) => await WrapUiEditorSwfFileAsync().ConfigureAwait(true);
             uiEditorPanel.ChooseSwfImportRequested += (_, _) => ChooseUiEditorSwfImport();
             uiEditorPanel.ImportSwfRequested += async (_, _) => await ImportUiEditorSwfAsync().ConfigureAwait(true);
         }
@@ -1245,6 +1248,36 @@ namespace MHUpkManager
             }
         }
 
+        private void ChooseUiEditorSwfOrGfxFile()
+        {
+            using OpenFileDialog dialog = new()
+            {
+                Filter = "SWF / GFX (*.swf;*.gfx)|*.swf;*.gfx|All Files (*.*)|*.*",
+                Title = "Choose SWF / GFX File"
+            };
+
+            if (dialog.ShowDialog(this) != DialogResult.OK || string.IsNullOrWhiteSpace(dialog.FileName))
+                return;
+
+            uiEditorPanel.SetSwfOrGfxFile(dialog.FileName);
+            uiEditorPanel.AppendLog($"UI Editor: selected SWF/GFX file {dialog.FileName}.");
+        }
+
+        private void ChooseUiEditorBinaryFile()
+        {
+            using OpenFileDialog dialog = new()
+            {
+                Filter = "Binary Files (*.bin)|*.bin|All Files (*.*)|*.*",
+                Title = "Choose Binary File"
+            };
+
+            if (dialog.ShowDialog(this) != DialogResult.OK || string.IsNullOrWhiteSpace(dialog.FileName))
+                return;
+
+            uiEditorPanel.SetBinaryFile(dialog.FileName);
+            uiEditorPanel.AppendLog($"UI Editor: selected binary file {dialog.FileName}.");
+        }
+
         private void ChooseUiEditorSwfImport()
         {
             EnemyClientUiTarget target = uiEditorPanel.SelectedTarget;
@@ -1267,6 +1300,62 @@ namespace MHUpkManager
             uiEditorPanel.AppendLog($"UI Editor: assigned SWF import file {dialog.FileName}.");
         }
 
+        private async Task WrapUiEditorSwfFileAsync()
+        {
+            string swfOrGfxPath = uiEditorPanel.SwfOrGfxFilePath;
+            string binaryFilePath = uiEditorPanel.BinaryFilePath;
+
+            if (string.IsNullOrWhiteSpace(swfOrGfxPath) || !File.Exists(swfOrGfxPath))
+            {
+                WarningBox("Choose a SWF / GFX file first.");
+                return;
+            }
+
+            if (string.IsNullOrWhiteSpace(binaryFilePath) || !File.Exists(binaryFilePath))
+            {
+                WarningBox("Choose a binary file first.");
+                return;
+            }
+
+            using SaveFileDialog dialog = new()
+            {
+                Filter = "Binary Files (*.bin)|*.bin|All Files (*.*)|*.*",
+                Title = "Save Wrapped SWF Output",
+                FileName = Path.GetFileNameWithoutExtension(swfOrGfxPath) + "_wrapped.bin"
+            };
+
+            if (dialog.ShowDialog(this) != DialogResult.OK || string.IsNullOrWhiteSpace(dialog.FileName))
+                return;
+
+            try
+            {
+                Cursor.Current = Cursors.WaitCursor;
+                progressStatus.Text = "Wrapping SWF file...";
+                uiEditorPanel.SetBusy(true);
+
+                await uiEditorTool.WrapSwfMovieFileAsync(swfOrGfxPath, binaryFilePath, dialog.FileName)
+                    .ConfigureAwait(true);
+
+                progressStatus.Text = "SWF wrap completed.";
+                uiEditorPanel.AppendLog($"UI Editor: wrapped output written to {dialog.FileName}.");
+                MessageBox.Show(
+                    $"Wrapped file written to:\n{dialog.FileName}",
+                    "UI Editor",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Information);
+            }
+            catch (Exception ex)
+            {
+                progressStatus.Text = "SWF wrap failed.";
+                uiEditorPanel.AppendLog($"UI Editor SWF wrap failed: {ex.Message}");
+                WarningBox($"UI Editor SWF wrap failed.\n\n{ex}");
+            }
+            finally
+            {
+                uiEditorPanel.SetBusy(false);
+                Cursor.Current = Cursors.Default;
+            }
+        }
         private async Task ImportUiEditorSwfAsync()
         {
             string packagePath = uiEditorPanel.PackagePath;

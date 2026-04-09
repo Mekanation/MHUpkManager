@@ -398,5 +398,111 @@ internal sealed class UiEditorTool
         return (header, export);
     }
 
+
+    static void ExtractSwfMovieRegions(
+      string swfOrGfxPath,
+      string binaryFilePath,
+      out byte[] EndofFile, out byte[] sfwMovieHeader,
+      out byte[] sfwMovieFooter)
+    {
+        // Read the last 16 bytes of the .swf/.gfx file as the end-of-file marker
+        byte[] swfData = File.ReadAllBytes(swfOrGfxPath);
+        if (swfData.Length < 16)
+            throw new InvalidOperationException($"'{Path.GetFileName(swfOrGfxPath)}' is too small to extract a 16-byte end marker.");
+
+        EndofFile = swfData[^16..];
+
+        // Load the target binary file
+        byte[] binaryData = File.ReadAllBytes(binaryFilePath);
+
+        // Find the first SWF/GFX signature and slice off everything before it as the header
+        string[] signatures = ["FWS", "CWS", "ZWS", "GFX"];
+        int signatureOffset = -1;
+
+        foreach (string sig in signatures)
+        {
+            int offset = FindBytes(binaryData, Encoding.ASCII.GetBytes(sig));
+            if (offset < 0)
+                continue;
+
+            signatureOffset = offset;
+            break;
+        }
+
+        if (signatureOffset < 0)
+            throw new InvalidOperationException("No SWF/GFX signature (FWS/CWS/ZWS/GFX) found in the binary file.");
+
+        sfwMovieHeader = binaryData[..signatureOffset];
+
+        // Search the binary file for the EndofFile marker and collect any trailing bytes as the footer
+        int eofOffset = FindBytes(binaryData, EndofFile);
+        if (eofOffset < 0)
+            throw new InvalidOperationException("EndOfFile marker was not found in the binary file.");
+
+        int footerStart = eofOffset + EndofFile.Length;
+        sfwMovieFooter = footerStart < binaryData.Length
+            ? binaryData[footerStart..]
+            : [];
+    }
+
+    static int FindBytes(byte[] haystack, byte[] needle)
+    {
+        for (int i = 0; i <= haystack.Length - needle.Length; i++)
+        {
+            bool matched = true;
+            for (int j = 0; j < needle.Length; j++)
+            {
+                if (haystack[i + j] != needle[j])
+                {
+                    matched = false;
+                    break;
+                }
+            }
+
+            if (matched)
+                return i;
+        }
+
+        return -1;
+    }
+
+
+    public async Task WrapSwfMovieFileAsync(string swfOrGfxPath, string binaryFilePath, string outputPath)
+    {
+        ExtractSwfMovieRegions(swfOrGfxPath, binaryFilePath,
+            out _,
+            out byte[] sfwMovieHeader,
+            out byte[] sfwMovieFooter);
+
+        byte[] swfData = File.ReadAllBytes(swfOrGfxPath);
+
+        string[] signatures = ["FWS", "CWS", "ZWS", "GFX"];
+        int sigOffsetInSwf = -1;
+        foreach (string sig in signatures)
+        {
+            int offset = FindBytes(swfData, Encoding.ASCII.GetBytes(sig));
+            if (offset >= 0) { sigOffsetInSwf = offset; break; }
+        }
+
+        if (sigOffsetInSwf < 0)
+            throw new InvalidOperationException("No SWF/GFX signature found in the source file.");
+
+        byte[] output = new byte[sfwMovieHeader.Length + swfData.Length + sfwMovieFooter.Length];
+        Buffer.BlockCopy(sfwMovieHeader, 0, output, 0, sfwMovieHeader.Length);
+        Buffer.BlockCopy(swfData, 0, output, sfwMovieHeader.Length, swfData.Length);
+        Buffer.BlockCopy(sfwMovieFooter, 0, output, sfwMovieHeader.Length + swfData.Length, sfwMovieFooter.Length);
+
+        int sigPos = sfwMovieHeader.Length + sigOffsetInSwf;
+
+        if (sigPos < 4)
+            throw new InvalidOperationException("Header is too short — need at least 4 bytes before the signature to patch.");
+        if (sigPos + 8 > output.Length)
+            throw new InvalidOperationException("Output is too short — need at least 4 bytes after the signature to copy.");
+
+        Buffer.BlockCopy(output, sigPos + 4, output, sigPos - 4, 4);
+
+        await File.WriteAllBytesAsync(outputPath, output).ConfigureAwait(false);
+    }
+
     private readonly record struct EmbeddedPayloadInfo(bool Found, string Signature, int Offset, int Length);
 }
